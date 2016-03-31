@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ObjectSet Name="Startup">
+  <Common>
+  <Parameters>
+    <FileHandle/>
+  </Parameters>
+  </Common>
+  <Objects Type="IJob">
+    <FileOpener Name="Open File" Filename="this.txt" FileMode="Read"/>
+    <TextReader Name="Read Text">
+      <Format>
+        <string>HTML</string>
+      </Format>
+      <Numbers>
+          <double>1.0</double>
+          <double>3.14159265</double>
+          <double>1000000000</double>
+          <double>-2.17159</double>
+      </Numbers>
+      <PreReqs>
+          <Ref Source="Open File"/>
+      </PreReqs>
+    </TextReader>
+  </Objects>
+</ObjectSet>
