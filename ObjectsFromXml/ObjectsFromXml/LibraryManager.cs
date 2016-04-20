@@ -23,7 +23,26 @@ namespace ObjectsFromXml
             _knownDlls = new List<LoadedDllDetails>();
             _dllTypes = new Dictionary<string, Type>();
             AddSystemTypes();
+            AddCurrentDomainTypes();
             CheckNewDlls();
+        }
+
+        private void AddCurrentDomainTypes()
+        {
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            foreach( var theAssembly in assemblies)
+            {
+                var dllTypes = theAssembly.GetTypes();
+
+                foreach (var theType in dllTypes)
+                {
+                    var attribs = CustomAttributeData.GetCustomAttributes(theType);
+                    if (CustomAttributeData.GetCustomAttributes(theType).Any(x => x.AttributeType.FullName == typeof(ObjectBuilderAttribute).FullName))
+                    {
+                        _dllTypes[theType.Name.ToUpper()] = theType;
+                    }
+                }
+            }
         }
 
         private void AddSystemTypes()
@@ -92,7 +111,13 @@ namespace ObjectsFromXml
         {
             var assemblyFile = System.Reflection.Assembly.GetExecutingAssembly().Location;
             var path = Path.GetDirectoryName(assemblyFile);
-            var dirInfo = new DirectoryInfo(path);
+            var pluginPath = Path.Combine(path, "Plugins");
+            var dirInfo = new DirectoryInfo(pluginPath);
+            if (!dirInfo.Exists)
+            {
+
+                return new List<FileInfo>().AsEnumerable();
+            }
             var files = dirInfo.GetFiles("*.dll");
             return files.AsEnumerable();
         }
@@ -107,7 +132,7 @@ namespace ObjectsFromXml
 
             try
             {
-                var dllReflection = System.Reflection.Assembly.ReflectionOnlyLoadFrom(dll.FullName);
+                var dllReflection = System.Reflection.Assembly.LoadFile(dll.FullName);
                 dllTypes = dllReflection.GetTypes();
             }
             catch(Exception ex)
@@ -140,12 +165,12 @@ namespace ObjectsFromXml
             var tempPath = Path.GetTempPath();
             var baseFile = Path.GetFileNameWithoutExtension(dllName);
             var extension = Path.GetExtension(dllName);
-            var search = string.Format("{0}*.{1}", baseFile, extension);
+            var search = string.Format("{0}*{1}", baseFile, extension);
             var existingFiles = Directory.GetFiles(tempPath, search);
             int i = 0;
             do
             {
-                var tempFile = string.Format("{0}{1}{2}.{3}", tempPath, baseFile, i, extension);
+                var tempFile = string.Format("{0}{1}{2}{3}", tempPath, baseFile, i, extension);
                 if (!existingFiles.Contains(tempFile))
                     return tempFile;
                 i++;
@@ -158,7 +183,7 @@ namespace ObjectsFromXml
         {
             List<Type> result;
             result = new List<Type>();
-            theDll = Assembly.LoadFrom(shadowCopy.FullName);
+            theDll = Assembly.LoadFile(shadowCopy.FullName);
             foreach (var theType in theDll.GetTypes())
             {
                 if (CustomAttributeData.GetCustomAttributes(theType).Any(x => x.AttributeType.FullName == typeof(ObjectBuilderAttribute).FullName))
@@ -179,6 +204,10 @@ namespace ObjectsFromXml
                 return true;
 
             var theType = GetType(objectType.ToUpper());
+
+            if (target.IsAssignableFrom(theType))
+                return true;
+
             if (theType == target)
                 return true;
 

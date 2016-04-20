@@ -17,6 +17,19 @@
           <double>1000000000</double>
           <double>-2.17159</double>
       </Numbers>
+      <NumberMap>
+        <Item Key="John" Value="3.1415"/>
+        <Item>
+          <Key>Jane</Key>
+          <Value>47</Value>
+        </Item>
+        <Item Key="David">
+          <Value>
+            <double>345.78</double>
+          </Value>
+        </Item>
+        <SystemUser>-1000000</SystemUser>
+      </NumberMap>
       <PreReqs>
           <Ref Source="Open File"/>
       </PreReqs>

@@ -12,6 +12,7 @@ namespace FileJobs
         public string Name { get; set; }
         public string Format { get; set; }
         public double[] Numbers { get; set; }
+        public Dictionary<string,double> NumberMap { get; set; }
         public TextReader()
         {
         }

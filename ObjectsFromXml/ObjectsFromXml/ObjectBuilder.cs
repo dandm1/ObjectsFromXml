@@ -78,14 +78,16 @@ namespace ObjectsFromXml
             var innerList = Build();
             List<X> castResults = new List<X>();
             foreach (object innerItem in innerList)
-                castResults.Add((X)innerItem);
+            {
+                X castItem = (X)innerItem;
+                 castResults.Add(castItem);
+            }
 
             return castResults;
         }
 
         public IEnumerable<object> Build()
         {
-            
             _namedObjects = new Dictionary<string, object>(ExternalObjects);
 
             var result = new List<dynamic>();
@@ -94,36 +96,84 @@ namespace ObjectsFromXml
             if (root.Name != ROOT_NODE)
                 Logger.Error(string.Format("Root node must be type {0}.", ROOT_NODE));
 
-            MakeCommonParameters(root);
+            try
+            {
+                MakeCommonParameters(root);
+            }
+            catch(Exception ex)
+            {
+                Logger.Error(string.Format("Error while making common parameters.  Error is {0}",ex),ex);
+                return new List<object>();
+            }
 
+            try { 
             MakeResources(root);
+        }
+            catch(Exception ex)
+            {
+                Logger.Error(string.Format("Error while making resources.  Error is {0}", ex),ex);
+                return new List<object>();
+            }
 
-            var objectNodes = root.Nodes().Where(x => ((XElement)x).Name == OBJECTS_NODE);
+    var objectNodes = root.Nodes().Where(x => ((XElement)x).Name == OBJECTS_NODE);
             if (objectNodes.Any())
             {
-                if ( _outType == null)
+                try
                 {
-                    var typeAttrib = ((XElement)objectNodes.First()).Attribute("Type");
-                    if (typeAttrib != null)
-                    {
-                        Type tempType = ResolveType(typeAttrib.Value, typeof(object));
-                        if (tempType != null)
-                            _outType = tempType;
-                    }
-
                     if (_outType == null)
-                        _outType = typeof(object);
+                    {
+                        DetermineOutputType(objectNodes);
+                    }
+                }
+                catch(Exception ex)
+                {
+                    Logger.Error(string.Format("Error determining output object type."), ex);
                 }
 
                 var allNodes = objectNodes.SelectMany(x => (((XElement)x).Nodes()));
+                if (!allNodes.Any())
+                {
+                    Logger.Error
+                        (
+                        string.Format("No output nodes found in input.  Input code is {0}",
+                        root.ToString()
+                        )
+                        );
+                }
+
                 foreach (XElement node in allNodes)
                 {
-                    dynamic theJob = ConstructInstance(_outType, node);
-                    result.Add(theJob);
+                    try
+                    {
+                        dynamic theJob = ConstructInstance(_outType, node);
+                        result.Add(theJob);
+                    }
+                    catch(Exception ex)
+                    {
+                        Logger.ErrorFormat("Error constructing object from node {0}.  The error is:{1}", node.Value, ex);
+                    }
                 }
+            }
+            else
+            {
+                Logger.Error(string.Format("Error building objects - no node {0} found!", OBJECTS_NODE));
             }
 
             return result.AsEnumerable();
+        }
+
+        private void DetermineOutputType(IEnumerable<XNode> objectNodes)
+        {
+            var typeAttrib = ((XElement)objectNodes.First()).Attribute("Type");
+            if (typeAttrib != null)
+            {
+                Type tempType = ResolveType(typeAttrib.Value, typeof(object));
+                if (tempType != null)
+                    _outType = tempType;
+            }
+
+            if (_outType == null)
+                _outType = typeof(object);
         }
 
         private void MakeResources(XElement root)
@@ -179,7 +229,12 @@ namespace ObjectsFromXml
                     result = ConstructListInstance(objectType, target, paramsXml);
                     break;
                 case DICTIONARY_TYPE:
-                    result = ConstructDictionaryInstance(objectType, target, target, paramsXml);
+                    var attribs = paramsXml.Attributes();
+                    var keyTypeName = attribs.Where(x => x.Name == "KeyType").Select(x => x.Value).FirstOrDefault();
+                    var valueTypeName = attribs.Where(x => x.Name == "KeyType").Select(x => x.Value).FirstOrDefault();
+                    Type keyType = LibraryManager.Instance.GetType(keyTypeName);
+                    Type valueType = LibraryManager.Instance.GetType(valueTypeName);
+                    result = ConstructDictionaryInstance(objectType, keyType, valueType, paramsXml);
                     break;
                 case REF_TYPE:
                     result = ConstructRefInstance(objectType, target, paramsXml);
@@ -222,7 +277,59 @@ namespace ObjectsFromXml
 
         private dynamic ConstructDictionaryInstance(string objectType, Type keyTarget, Type valueTarget, XElement paramsXml)
         {
-            throw new NotImplementedException();
+            dynamic result;
+            
+            var genericListType = typeof(Dictionary<,>).MakeGenericType(keyTarget,valueTarget);
+            result = Activator.CreateInstance(genericListType);
+
+            foreach (XElement item in paramsXml.Nodes())
+            {
+                XElement keyElement = FindAttributeOrDescendant(item, "Key", keyTarget);
+                XElement valueElement = FindAttributeOrDescendant(item, "Value", valueTarget);
+                dynamic childKey = ConstructInstance(keyTarget, keyElement);
+                dynamic childValue = ConstructInstance(valueTarget, valueElement);
+                result[childKey] = childValue;
+            }
+
+            return result;
+        }
+
+        private XElement FindAttributeOrDescendant(XElement item, string name, Type outType)
+        {
+            var decendants = item.Descendants();
+            var descMatch = decendants.Where(x => x.Name == name).FirstOrDefault();
+
+            if (descMatch != null)
+            {
+                return ValueAsXElement(outType, descMatch);
+            }
+
+            var attributes = item.Attributes();
+            var matchAttrib = attributes.Where(x => x.Name == name).FirstOrDefault();
+
+            if (matchAttrib != null)
+                return new XElement(outType.Name, matchAttrib.Value );
+
+            if (name == "Key")
+            {
+                string itemName = item.Name.ToString();
+                return new XElement(outType.Name, itemName);
+            }
+            else if (name == "Value")
+            {
+                return ValueAsXElement(outType, item);
+            }
+
+            return null;
+        }
+
+        private static XElement ValueAsXElement(Type outType, XElement descMatch)
+        {
+            var firstElement = descMatch.FirstNode;
+            if (typeof(XElement).IsAssignableFrom(firstElement.GetType()))
+                return (XElement)descMatch.FirstNode;
+            else
+                return new XElement(outType.Name, firstElement);
         }
 
         private dynamic ConstructListInstance(string objectType, Type target, XElement paramsXml)
@@ -282,6 +389,9 @@ namespace ObjectsFromXml
         private dynamic ConstructObjectInstance(string objectType,Type target, XElement paramsXml)
         {
             Type targetType = ResolveType(objectType, target);
+            if (targetType == null)
+                throw new Exception(string.Format("Unable to resolve object type when constructing object.  No type {0} was found that supports type {1}.",objectType,target.Name));
+
             var textNode = paramsXml.Nodes().Where(x => x.GetType() == typeof(XText)).FirstOrDefault();
             string content;
             if (textNode == null)
@@ -289,15 +399,44 @@ namespace ObjectsFromXml
             else
                 content= ((XText)textNode).Value;
 
-            dynamic result = ApplyConstructor(targetType, content);
+            dynamic result = null;
+            try
+            {
+                result = ApplyConstructor(targetType, content);
+            }
+            catch(Exception ex)
+            {
+                throw new Exception(string.Format("Error while applying constructor for type {0} with content '{1}'.",targetType,content),ex);
+            }
 
-            AddCommonParameters(result, targetType, paramsXml);
+            try
+            { 
+                AddCommonParameters(result, targetType, paramsXml);
+            }
+            catch(Exception ex)
+            {
+                throw new Exception(string.Format("Error while adding common parameters to type {0}", targetType),ex);
+            }
 
-            AddAttributes(result, targetType, paramsXml);
+            try
+            { 
+                AddAttributes(result, targetType, paramsXml);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(string.Format("Error while adding attributes to type {0}.", targetType), ex);
+            }
 
-            AddDescendants(result, targetType, paramsXml);
+            try
+            { 
+                AddDescendants(result, targetType, paramsXml);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(string.Format("Error while adding descendants to type {0}.", targetType), ex);
+            }
 
-        return result;
+            return result;
         }
 
         private dynamic ApplyConstructor(Type targetType, string content)
@@ -319,12 +458,34 @@ namespace ObjectsFromXml
                 )
                 )
             {
-                result = Activator.CreateInstance(targetType, content);
+                try
+                {
+                    result = Activator.CreateInstance(targetType, content);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception(String.Format("Error creating instance of {0} using a parameter of {1}.",targetType.Name,content), ex);
+                }
             }
             else if (zeroParameterConstructors.Any())
             {
-                result = Activator.CreateInstance(targetType);
-                AddContentParameter(content, result);
+                try
+                {
+                    result = Activator.CreateInstance(targetType);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception(String.Format("Error creating instance of {0} using a constructor with no parameters.", targetType.Name), ex);
+                }
+
+                try
+                {
+                    AddContentParameter(content, result);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception(String.Format("Error adding content '{1}' as a content property of type {0}.", targetType.Name, content), ex);
+                }
             }
             else if (content.Length > 0 || targetType == typeof(string))
             {
@@ -334,6 +495,7 @@ namespace ObjectsFromXml
                 }
                 catch (Exception ex)
                 {
+                    throw new Exception(string.Format("Error constructing object.  Type {1} has no 0 parameter constructors, no constructors with a single parameter to which '{0}' can be assigned and an error occured while converting value '{0}' directly to type {1}.", content, targetType.Name), ex);
                 }
             }
 
@@ -356,12 +518,19 @@ namespace ObjectsFromXml
 
         private Type ResolveType(string objectType,Type target)
         {
-            LibraryManager libManager = LibraryManager.Instance;
+            LibraryManager libManager;
+            try
+            {
+                libManager = LibraryManager.Instance;
+            }
+            catch(Exception ex)
+            {
+                throw new Exception("Exception encountered while accessing library of DLLs and classes.", ex);
+            }
 
             if (!libManager.HasType(objectType, target))
             {
-                Logger.Error(string.Format("No type named {0} available which implements interface {1}.", objectType, target.Name));
-                return null;
+                throw new Exception(string.Format("No type named {0} available which can be used as a {1}.", objectType, target.Name));
             }
 
             return libManager.GetType(objectType);
@@ -379,11 +548,20 @@ namespace ObjectsFromXml
                 {
                     var theProperty = matchingProperties.First();
                     var propType = theProperty.PropertyType;
-                    dynamic value;
+                    dynamic value = null;
                     if (propType.IsAssignableFrom(parameter.Value.GetType()))
                         value = parameter.Value;
                     else
-                        value = Convert.ChangeType(parameter.Value, propType);
+                    {
+                        try
+                        {
+                            value = Convert.ChangeType(parameter.Value, propType);
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception(string.Format("Error converting parameter value '{0}' to type {1} when setting parameters", parameter.Value, propType.Name), ex);
+                        }
+                    }
                     theProperty.SetValue(result, value);
                 }
                 else if (resAsExtraParams != null)
@@ -405,17 +583,32 @@ namespace ObjectsFromXml
                 var matchingProperties = targetProperties.Where(x => x.Name == parameter.Name);
                 if (matchingProperties.Any())
                 {
-                    var theProperty = matchingProperties.First();
-                    if (theProperty.CanWrite)
+                    try
                     {
-                        var propType = theProperty.PropertyType;
-                        var value = Convert.ChangeType(parameter.Value, propType);
-                        theProperty.SetValue(result, value);
+                        var theProperty = matchingProperties.First();
+                        if (theProperty.CanWrite)
+                        {
+                            var propType = theProperty.PropertyType;
+                            var value = Convert.ChangeType(parameter.Value, propType);
+                            theProperty.SetValue(result, value);
+                        }
+                        else
+                        {
+                            Logger.WarnFormat("Found value '{0}' for parameter {1} on object type {2} in node {3}.  This cannot be assigned as parameter {1} is read only.",parameter.Value,parameter.Name,targetType.Name,paramsXml.Value);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception(string.Format("Error assigning value {0} to property {1} on type {2}",parameter.Value,parameter.Name,targetType.Name),ex);
                     }
                 }
                 else if (resAsExtraParams != null)
                 {
                     resAsExtraParams.AddParameter(parameter.Name.LocalName, parameter.Value);
+                }
+                else
+                {
+                    Logger.WarnFormat("Unable to assign value '{0}' to object {1}.  No property named {2} is available and the object does not take additional parameters.", parameter.Value, targetType.Name, parameter.Name);
                 }
 
             }
@@ -429,8 +622,11 @@ namespace ObjectsFromXml
             foreach (var descXn in paramsXml.Nodes())
             {
                 XElement desc = descXn as XElement;
-                if (desc == null) continue;
-
+                if (desc == null)
+                {
+                    Logger.WarnFormat("Found content {0} in XML element {1} that cannot be converted to a node.  Skipping",desc.Value,paramsXml.Value);
+                    continue;
+                }
                 var matchingProperties = targetProperties.Where(x => x.Name == desc.Name);
                 if (matchingProperties.Any())
                 {
@@ -441,7 +637,13 @@ namespace ObjectsFromXml
                         var isGenericList = propType.IsGenericType && 
                             propType.GetInterfaces().Contains(typeof(System.Collections.IEnumerable)) &&
                             propType != typeof(string);
-                        if (propType.IsArray || isGenericList)
+                        if (propType.GetInterfaces().Contains(typeof(System.Collections.IDictionary)) && propType.IsGenericType)
+                        {
+                            Type keyType = propType.GetGenericArguments()[0];
+                            Type valueType = propType.GetGenericArguments()[1];
+                            var value = ConstructDictionaryInstance(DICTIONARY_TYPE, keyType, valueType, (XElement)desc);
+                        }
+                        else if (propType.IsArray || isGenericList)
                         {
                             string listType;
                             if (propType.IsArray)
@@ -459,6 +661,10 @@ namespace ObjectsFromXml
                             var value = ConstructInstance(propType, (XElement)desc.FirstNode);
                             theProperty.SetValue(result, value);
                         }
+                    }
+                    else
+                    {
+                        Logger.WarnFormat("Found value '{0}' for parameter {1} on object type {2} in node {3}.  This cannot be assigned as parameter {1} is read only.", descXn.ToString(), theProperty.Name, targetType.Name, paramsXml.Value);
                     }
                 }
                 else if (resAsExtraParams != null)
