@@ -5,30 +5,70 @@ using System.Text;
 using System.Threading.Tasks;
 using log4net;
 
-namespace ObjectsFromXml
+namespace HostConsoleApp
 {
-    public class Logger
+    public class Logger : ObjectsFromXml.ILog
     {
-        private static ILog _logger;
+        private log4net.ILog _logger;
 
-        static Logger()
+        public Logger()
         {
             _logger = log4net.LogManager.GetLogger("Default");
         }
 
-        public static void Info(string message)
+        public Logger(log4net.ILog inLog)
+        {
+            _logger = inLog;
+        }
+
+        public void Info(string message)
         {
             _logger.Info(message);
         }
 
-        public static void Error(string message,Exception ex)
+        public void Error(string message)
+        {
+            _logger.Error(message);
+        }
+
+        public void Error(string message,Exception ex)
         {
             _logger.Error(message,ex);
         }
 
-        internal static void Error(string v)
+        public void ErrorFormat(string v, params object[] values)
         {
-            _logger.Error(v);
+            _logger.ErrorFormat(v, values);
+        }
+
+        public void Warn(string v)
+        {
+            _logger.Warn(v);
+        }
+
+        public void WarnFormat(string v, params object[] values)
+        {
+            _logger.WarnFormat(v, values);
+        }
+
+        public void InfoFormat(string v, params object[] values)
+        {
+            _logger.InfoFormat(v, values);
+        }
+
+        public void Critical(string v)
+        {
+            _logger.Fatal(v);
+        }
+
+        public void Critical(string v,Exception ex)
+        {
+            _logger.Fatal(v, ex);
+        }
+
+        public void CriticalFormat(string v, params object[] values)
+        {
+            _logger.FatalFormat(v, values);
         }
     }
 }

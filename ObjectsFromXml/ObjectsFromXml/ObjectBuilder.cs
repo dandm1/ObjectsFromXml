@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 using System.Reflection;
-using log4net;
 
 namespace ObjectsFromXml
 {
@@ -27,12 +26,16 @@ namespace ObjectsFromXml
         private Type _outType;
 
         private ILog _logger;
-        private ILog Logger
+        public ILog Logger
         {
-            get
+            set
+            {
+                _logger = value;
+            }
+            private get
             {
                 if (_logger == null)
-                    _logger = LogManager.GetCurrentLoggers()[0];
+                    _logger = new ExceptionLogger();
 
                 return _logger;
             }
@@ -70,7 +73,7 @@ namespace ObjectsFromXml
             if (_outType != null)
             {
                 if (typeof(X) != _outType)
-                    Logger.Error(string.Format("Cannot use genric output with type {0} with out type of {1}.",typeof(X).FullName,_outType.FullName));
+                    Logger.ErrorFormat("Cannot use genric output with type {0} with out type of {1}.",typeof(X).FullName,_outType.FullName);
             }
             else
                 _outType = typeof(X);
@@ -89,12 +92,12 @@ namespace ObjectsFromXml
         public IEnumerable<object> Build()
         {
             _namedObjects = new Dictionary<string, object>(ExternalObjects);
-
+            
             var result = new List<dynamic>();
 
             XElement root = (XElement)doc.FirstNode;
             if (root.Name != ROOT_NODE)
-                Logger.Error(string.Format("Root node must be type {0}.", ROOT_NODE));
+                Logger.ErrorFormat("Root node must be type {0}.", ROOT_NODE);
 
             try
             {
@@ -102,20 +105,21 @@ namespace ObjectsFromXml
             }
             catch(Exception ex)
             {
-                Logger.Error(string.Format("Error while making common parameters.  Error is {0}",ex),ex);
+                Logger.ErrorFormat("Error while making common parameters.  Error is {0}",ex);
                 return new List<object>();
             }
 
-            try { 
-            MakeResources(root);
-        }
+            try
+            { 
+                MakeResources(root);
+            }
             catch(Exception ex)
             {
-                Logger.Error(string.Format("Error while making resources.  Error is {0}", ex),ex);
+                Logger.ErrorFormat("Error while making resources.  Error is {0}", ex);
                 return new List<object>();
             }
 
-    var objectNodes = root.Nodes().Where(x => ((XElement)x).Name == OBJECTS_NODE);
+            var objectNodes = root.Nodes().Where(x => ((XElement)x).Name == OBJECTS_NODE);
             if (objectNodes.Any())
             {
                 try
@@ -127,19 +131,19 @@ namespace ObjectsFromXml
                 }
                 catch(Exception ex)
                 {
-                    Logger.Error(string.Format("Error determining output object type."), ex);
+                    Logger.ErrorFormat("Error determining output object type.", ex);
                 }
 
                 var allNodes = objectNodes.SelectMany(x => (((XElement)x).Nodes()));
                 if (!allNodes.Any())
                 {
-                    Logger.Error
-                        (
-                        string.Format("No output nodes found in input.  Input code is {0}",
+                    Logger.ErrorFormat("No output nodes found in input.  Input code is {0}",
                         root.ToString()
-                        )
+                        
                         );
                 }
+
+                Logger.InfoFormat("Found {0} nodes to build.", allNodes.Count());
 
                 foreach (XElement node in allNodes)
                 {
@@ -251,6 +255,8 @@ namespace ObjectsFromXml
 
         private dynamic ConstructRefInstance(string objectType, Type target, XElement paramsXml)
         {
+            Logger.InfoFormat("Creating reference to object of type {0}", target.Name);
+
             var sourceName = paramsXml.Attribute("Source");
             if (sourceName == null)
             {
@@ -277,6 +283,8 @@ namespace ObjectsFromXml
 
         private dynamic ConstructDictionaryInstance(string objectType, Type keyTarget, Type valueTarget, XElement paramsXml)
         {
+            Logger.InfoFormat("Construction dictionary of items with key type {0} and value type {1}", keyTarget.Name, valueTarget.Name);
+
             dynamic result;
             
             var genericListType = typeof(Dictionary<,>).MakeGenericType(keyTarget,valueTarget);
@@ -335,6 +343,7 @@ namespace ObjectsFromXml
         private dynamic ConstructListInstance(string objectType, Type target, XElement paramsXml)
         {
             dynamic result;
+            Logger.InfoFormat("Construction array of type {0} objects.", objectType);
 
             Type[] genericAttributes;
             if (target.IsGenericType)
@@ -388,6 +397,8 @@ namespace ObjectsFromXml
 
         private dynamic ConstructObjectInstance(string objectType,Type target, XElement paramsXml)
         {
+            Logger.InfoFormat("Constructing instance of object of type {0} for target {1}", objectType, target);
+
             Type targetType = ResolveType(objectType, target);
             if (targetType == null)
                 throw new Exception(string.Format("Unable to resolve object type when constructing object.  No type {0} was found that supports type {1}.",objectType,target.Name));
@@ -673,11 +684,6 @@ namespace ObjectsFromXml
                     resAsExtraParams.AddParameter(desc.Name.LocalName, value);
                 }
             }
-        }
-
-        public void Dispose()
-        {
-            
         }
     }
 }
