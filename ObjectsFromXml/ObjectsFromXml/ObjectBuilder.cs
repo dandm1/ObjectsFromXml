@@ -149,12 +149,13 @@ namespace ObjectsFromXml
                 {
                     try
                     {
+                        Logger.InfoFormat("Constructing object from node :\r\n{0}",node.ToString());
                         dynamic theJob = ConstructInstance(_outType, node);
                         result.Add(theJob);
                     }
                     catch(Exception ex)
                     {
-                        Logger.ErrorFormat("Error constructing object from node {0}.  The error is:{1}", node.Value, ex);
+                        Logger.ErrorFormat("Error constructing object from node {0}.\r\nThe error is: {1}", node.Value, ex);
                     }
                 }
             }
@@ -185,11 +186,15 @@ namespace ObjectsFromXml
             var resourceNodes = root.Nodes().Where(x => ((XElement)x).Name == RESOURCE_NODE);
             if (resourceNodes.Any())
             {
+                Logger.InfoFormat("Found {0} resources to build.", resourceNodes.Count());
                 foreach (XElement node in (((XElement)resourceNodes.First()).Nodes()))
                 {
+                    Logger.InfoFormat("Constructing resource from node '{0}'.",node.ToString());
                     ConstructInstance(typeof(object), node);
                 }
             }
+            else
+                Logger.InfoFormat("Found no resources to build.");
         }
 
         private void MakeCommonParameters(XElement root)
@@ -200,13 +205,17 @@ namespace ObjectsFromXml
             if (commonNodes.Any())
             {
                 var allCommonVariables = commonNodes.SelectMany(x => ((XElement)x).Nodes());
+                Logger.InfoFormat("Found {0} common parameters to build.", allCommonVariables.Count());
 
                 foreach (XElement node in allCommonVariables)
                 {
+                    Logger.InfoFormat("Constructing common parameter from node:\r\n{0}", node.ToString());
                     XElement paramsXml = (XElement)node.FirstNode;
                     _commonParameters[node.Name.LocalName] = ConstructInstance(typeof(object), paramsXml);
                 }
             }
+            else
+                Logger.InfoFormat("Found no common parameters to build.");
         }
 
         private void SaveObject(object theObject, XElement paramsXml)
@@ -343,8 +352,7 @@ namespace ObjectsFromXml
         private dynamic ConstructListInstance(string objectType, Type target, XElement paramsXml)
         {
             dynamic result;
-            Logger.InfoFormat("Construction array of type {0} objects.", objectType);
-
+            
             Type[] genericAttributes;
             if (target.IsGenericType)
 
@@ -374,6 +382,8 @@ namespace ObjectsFromXml
                 listOfType = listOfTypeAttr.Value;
 
             Type targetType = ResolveType(listOfType, genericType);
+
+            Logger.InfoFormat("Constructing array of type {0} objects.", targetType.Name);
 
             var genericListType = typeof(List<>).MakeGenericType(targetType);
             result = Activator.CreateInstance(genericListType);
@@ -630,14 +640,11 @@ namespace ObjectsFromXml
             IEnumerable<PropertyInfo> targetProperties = targetType.GetProperties().AsEnumerable();
 
             var resAsExtraParams = result as IExtraParameters;
-            foreach (var descXn in paramsXml.Nodes())
+            foreach (XNode descXn in paramsXml.Nodes())
             {
                 XElement desc = descXn as XElement;
-                if (desc == null)
-                {
-                    Logger.WarnFormat("Found content {0} in XML element {1} that cannot be converted to a node.  Skipping",desc.Value,paramsXml.Value);
-                    continue;
-                }
+                if (desc == null) continue;
+
                 var matchingProperties = targetProperties.Where(x => x.Name == desc.Name);
                 if (matchingProperties.Any())
                 {
@@ -675,7 +682,7 @@ namespace ObjectsFromXml
                     }
                     else
                     {
-                        Logger.WarnFormat("Found value '{0}' for parameter {1} on object type {2} in node {3}.  This cannot be assigned as parameter {1} is read only.", descXn.ToString(), theProperty.Name, targetType.Name, paramsXml.Value);
+                        Logger.WarnFormat("Found value '{0}' for parameter {1} on object type {2} in node {3}.  This cannot be assigned as parameter {1} is read only.", desc.ToString(), theProperty.Name, targetType.Name, paramsXml.Value);
                     }
                 }
                 else if (resAsExtraParams != null)
