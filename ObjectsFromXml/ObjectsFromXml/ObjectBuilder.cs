@@ -244,7 +244,7 @@ namespace ObjectsFromXml
                 case DICTIONARY_TYPE:
                     var attribs = paramsXml.Attributes();
                     var keyTypeName = attribs.Where(x => x.Name == "KeyType").Select(x => x.Value).FirstOrDefault();
-                    var valueTypeName = attribs.Where(x => x.Name == "KeyType").Select(x => x.Value).FirstOrDefault();
+                    var valueTypeName = attribs.Where(x => x.Name == "ValueType").Select(x => x.Value).FirstOrDefault();
                     Type keyType = LibraryManager.Instance.GetType(keyTypeName);
                     Type valueType = LibraryManager.Instance.GetType(valueTypeName);
                     result = ConstructDictionaryInstance(objectType, keyType, valueType, paramsXml);

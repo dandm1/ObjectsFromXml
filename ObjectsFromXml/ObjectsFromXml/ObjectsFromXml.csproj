@@ -46,6 +46,7 @@
     <Compile Include="ExceptionLogger.cs" />
     <Compile Include="IExtraParameters.cs" />
     <Compile Include="ILog.cs" />
+    <Compile Include="MultiEnumerable.cs" />
     <Compile Include="ObjectBuilderAttribute.cs" />
     <Compile Include="ObjectBuilder.cs" />
     <Compile Include="LibraryManager.cs" />
@@ -54,6 +55,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Documentation\ObjectsFromXML Documentation.htm" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

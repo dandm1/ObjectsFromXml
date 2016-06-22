@@ -79,7 +79,7 @@ namespace ObjectsFromXml
         }
 
         private void CheckNewDlls()
-        { 
+        {
             IEnumerable<FileInfo> DLLs = GetCurrentPathDlls();
             IEnumerable<FileInfo> newDlls = DLLs.Where(x => !_knownDlls.Any(y => y.OriginalFile.LastWriteTime == x.LastWriteTime && y.OriginalFile.Name == x.Name));
             foreach(var dll in newDlls)
